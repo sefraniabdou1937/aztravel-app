@@ -1,18 +1,17 @@
-import os
+import os  # <--- Très important, c'est lui qui lit les variables Azure
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# --- INTELLIGENCE CLOUD ---
-# Le code cherche d'abord une variable 'DATABASE_URL' (donnée par Azure).
-# S'il ne la trouve pas (sur ton PC), il utilise ton lien localhost.
+# Azure fournira l'URL via la variable 'DATABASE_URL'.
+# Sinon (sur ton PC), on utilise ton lien localhost.
 SQLALCHEMY_DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://postgres:admin@localhost:5434/aztravel_db" 
+    "DATABASE_URL",
+    "postgresql://postgres:admin@localhost:5434/aztravel_db"
 )
 
-# Correctif pour certains hébergeurs qui utilisent postgres:// au lieu de postgresql://
-if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+# Correctif obligatoire pour Azure (remplace postgres:// par postgresql://)
+if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
