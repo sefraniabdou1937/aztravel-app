@@ -9,29 +9,31 @@ import {
   Input,
   Icon,
 } from "@chakra-ui/react";
-import React, { useCallback } from "react"; // <-- MODIFIÉ
+import React, { useCallback } from "react"; 
 
-// CORRECTION : Séparez l'importation de useAuth
-import { useAuth } from "contexts/AuthContext"; // Assurez-vous que le chemin est correct
+// --- CORRECTION 1 : Imports relatifs pour réparer la compilation ---
+// On remonte de views/admin/default (3 niveaux) pour atteindre src/
+import { useAuth } from "../../../contexts/AuthContext"; 
+import { getEndpoint } from "../../../config/api";     
 
-// Custom components
-import MiniCalendar from "components/calendar/MiniCalendar";
-import MiniStatistics from "components/card/MiniStatistics";
-import IconBox from "components/icons/IconBox";
-import Card from "components/card/Card.js";
+// Imports relatifs pour les composants globaux
+import MiniCalendar from "../../../components/calendar/MiniCalendar";
+import MiniStatistics from "../../../components/card/MiniStatistics";
+import IconBox from "../../../components/icons/IconBox";
+import Card from "../../../components/card/Card.js";
 import {
   MdAddTask,
   MdAttachMoney,
   MdBarChart,
-  MdFlightTakeoff, // <-- On garde celui-là
-  MdCheckCircle, // <-- J'ai mis une icône plus logique pour la progression
+  MdFlightTakeoff, 
+  MdCheckCircle, 
 } from "react-icons/md";
 
-// Composants du Dashboard
-import CheckTable from "views/admin/default/components/CheckTable";
-import Tasks from "views/admin/default/components/Tasks";
-import TotalSpent from "views/admin/default/components/TotalSpent";
-import WeeklyRevenue from "views/admin/default/components/WeeklyRevenue";
+// Imports relatifs pour les composants locaux (dans le même dossier ou sous-dossier components)
+import CheckTable from "./components/CheckTable";
+import Tasks from "./components/Tasks";
+import TotalSpent from "./components/TotalSpent";
+import WeeklyRevenue from "./components/WeeklyRevenue";
 
 // On garde les devises d'origine
 const originCurrencies = [
@@ -53,7 +55,7 @@ const formatDate = (date) => {
 };
 
 export default function UserReports() {
-  const { token } = useAuth(); // Le token est maintenant accessible
+  const { token } = useAuth(); 
   
   const brandColor = useColorModeValue("brand.500", "white");
   const boxBg = useColorModeValue("secondaryGray.300", "whiteAlpha.100");
@@ -86,15 +88,16 @@ export default function UserReports() {
   const [flightResult, setFlightResult] = React.useState(null);
   const [visaStatus, setVisaStatus] = React.useState(null);
 
-  // Calcul Pourcentage (Maintenant utilisé !)
+  // Calcul Pourcentage
   const tasksCompleted = taskStats.total_tasks - taskStats.pending_tasks;
   const completionPercentage = taskStats.total_tasks > 0
     ? ((tasksCompleted / taskStats.total_tasks) * 100).toFixed(0) : 0;
 
   // --- FONCTION : RAFRAÎCHIR LES STATS ---
-  const refreshTaskStats = React.useCallback(() => { // <-- AJOUTER useCallback
+  const refreshTaskStats = React.useCallback(() => {
     if (!token) return;
-    fetch("http://127.0.0.1:8000/api/tasks/stats", {
+    // --- CORRECTION 2 : Utilisation de getEndpoint pour l'URL ---
+    fetch(getEndpoint("/api/tasks/stats"), {
       headers: { "Authorization": `Bearer ${token}` }
     })
       .then((res) => res.json())
@@ -109,9 +112,8 @@ export default function UserReports() {
     if (token) {
       refreshTaskStats();
 
-      // Charger la liste des pays
       setIsCountriesLoading(true);
-      fetch("http://127.0.0.1:8000/api/countries")
+      fetch(getEndpoint("/api/countries"))
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -125,7 +127,7 @@ export default function UserReports() {
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]); // On ignore l'avertissement ici car on veut que ça tourne une seule fois au début
+  }, [token]);
 
   // --- 2. CHARGEMENT TAUX DE CHANGE ---
   React.useEffect(() => {
@@ -135,7 +137,7 @@ export default function UserReports() {
         return;
       }
       setCurrencyRate(null);
-      fetch(`http://127.0.0.1:8000/api/currency/rate/${originCurrency}/${targetCurrency}`)
+      fetch(getEndpoint(`/api/currency/rate/${originCurrency}/${targetCurrency}`))
         .then(res => res.json())
         .then(data => { if (data.rate) setCurrencyRate(data); })
         .catch(err => console.error("Erreur Taux:", err));
@@ -149,7 +151,7 @@ export default function UserReports() {
 
     // Météo
     setWeather({ temp: "--", city: cityName, desc: "Chargement..." });
-    fetch(`http://127.0.0.1:8000/api/weather/${cityName}?date=${formattedDate}`)
+    fetch(getEndpoint(`/api/weather/${cityName}?date=${formattedDate}`))
       .then(res => res.json())
       .then(data => {
         if (!data.error) setWeather({ temp: data.temperature, city: data.ville, desc: data.description });
@@ -157,12 +159,12 @@ export default function UserReports() {
 
     // Forecast
     setForecast(null);
-    fetch(`http://127.0.0.1:8000/api/weather/forecast/${cityName}?start_date=${formattedDate}`)
+    fetch(getEndpoint(`/api/weather/forecast/${cityName}?start_date=${formattedDate}`))
       .then(res => res.json()).then(data => { if (!data.error) setForecast(data); });
 
     // Vols
     setFlightResult(null);
-    fetch(`http://127.0.0.1:8000/api/flights/${cityName}?departure_date=${formattedDate}`)
+    fetch(getEndpoint(`/api/flights/${cityName}?departure_date=${formattedDate}`))
       .then(res => res.json()).then(data => { if (data && !data.error) setFlightResult(data); else setFlightResult({ error: true }); });
   }
 
@@ -184,7 +186,7 @@ export default function UserReports() {
     setIsCitiesLoading(true);
 
     if (countryName) {
-      fetch(`http://127.0.0.1:8000/api/cities/${encodeURIComponent(countryName)}`)
+      fetch(getEndpoint(`/api/cities/${encodeURIComponent(countryName)}`))
         .then(res => res.json())
         .then(data => {
           if (data.cities && Array.isArray(data.cities)) {
@@ -199,7 +201,7 @@ export default function UserReports() {
         });
 
       setVisaStatus(null);
-      fetch(`http://127.0.0.1:8000/api/visa/${countryName}`)
+      fetch(getEndpoint(`/api/visa/${countryName}`))
         .then(res => res.json()).then(data => setVisaStatus(data));
     }
 
@@ -223,7 +225,7 @@ export default function UserReports() {
       const welcomePrompt = `Donne-moi une très courte description (2-3 phrases) de la ville de ${cityName}. Commence par "Bienvenue à ${cityName} !".`;
       setChatHistory([{ role: "model", text: "Génération d'une description..." }]);
       if (token) {
-        fetch("http://127.0.0.1:8000/api/chat", {
+        fetch(getEndpoint("/api/chat"), {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({ prompt: welcomePrompt, city: cityName }),
@@ -234,7 +236,7 @@ export default function UserReports() {
 
       refreshCityModules(cityName, selectedDate);
 
-      fetch(`http://127.00.0.1:8000/api/photos/${cityName}`)
+      fetch(getEndpoint(`/api/photos/${cityName}`))
         .then(res => res.json()).then(data => { if (data.photos) setPhotos(data.photos); });
     }
   };
@@ -244,7 +246,7 @@ export default function UserReports() {
   const handleSendChat = (prompt) => {
     if (!token || !selectedCity || prompt.trim() === "") return;
     setChatHistory((prev) => [...prev, { role: "user", text: prompt }]);
-    fetch("http://127.0.0.1:8000/api/chat", {
+    fetch(getEndpoint("/api/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ prompt: prompt, city: selectedCity }),
@@ -343,7 +345,6 @@ export default function UserReports() {
           growth={flightResult && !flightResult.error ? `${flightResult.airline_name || 'N/A'}` : (flightResult ? "Aucun vol" : "Sélectionnez")}
         />
 
-        {/* --- CARTE PROGRESSION (Corrigée) --- */}
         <MiniStatistics
           startContent={<IconBox w='56px' h='56px' bg={boxBg} icon={<Icon w='32px' h='32px' as={MdCheckCircle} color={brandColor} />} />}
           name='Progression'
