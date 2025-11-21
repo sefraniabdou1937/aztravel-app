@@ -1,19 +1,20 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# --- ANCIENNE CONFIG (SQLite) ---
-# SQLALCHEMY_DATABASE_URL = "sqlite:///./travel.db"
-# engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# --- INTELLIGENCE CLOUD ---
+# Le code cherche d'abord une variable 'DATABASE_URL' (donnée par Azure).
+# S'il ne la trouve pas (sur ton PC), il utilise ton lien localhost.
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "postgresql://postgres:admin@localhost:5434/aztravel_db" 
+)
 
-# --- NOUVELLE CONFIG (PostgreSQL) ---
-# Format : postgresql://UTILISATEUR:MOT_DE_PASSE@SERVEUR:PORT/NOM_DE_LA_BASE
-# Remplace 'ton_mot_de_passe' par celui que tu as mis à l'installation
-# Remplace 'ton_mot_de_passe' par celui que tu as tapé dans pgAdmin
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:admin@localhost:5434/aztravel_db"
-# Note : On retire 'connect_args={"check_same_thread": False}' car Postgres gère ça tout seul
+# Correctif pour certains hébergeurs qui utilisent postgres:// au lieu de postgresql://
+if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
-
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
