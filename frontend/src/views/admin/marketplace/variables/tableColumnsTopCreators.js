@@ -1,3 +1,4 @@
+
 export const tableColumnsTopCreators = [
   {
     Header: "Name",
@@ -12,3 +13,4 @@ export const tableColumnsTopCreators = [
     accessor: "rating",
   },
 ];
+s

@@ -1,29 +1,46 @@
+import os
+import random
 import requests
+import uvicorn
+from typing import List, Optional
+
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from datetime import datetime
-from typing import List, Optional
 from jose import JWTError, jwt
-import os
+from dotenv import load_dotenv
 import google.generativeai as genai
-from pydantic import BaseModel
-import random
+from sqlalchemy.orm import Session
 
 # --- Imports de nos fichiers locaux ---
 from database import engine, SessionLocal
 import models
 import schemas
 import security
-from sqlalchemy.orm import Session
 
-# --- Création de la table ---
+# Charger les variables depuis .env (pour le développement local)
+load_dotenv()
+
+# --- Création des tables dans la DB ---
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(
+    title="AzTravel API",
+    description="Backend API pour l'application de voyage AzTravel (Azure Ready)",
+    version="1.0.0"
+)
 
-# --- CONFIGURATION CORS ---
-origins = ["http://localhost:3000"]
+# -----------------------------------------------
+# --- CONFIGURATION CORS (Azure Ready) ---
+# -----------------------------------------------
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+origins = [
+    "http://localhost:3000",       # React Local
+    "http://127.0.0.1:3000",       # React Local IP
+    FRONTEND_URL,                  # URL Production Azure
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -32,7 +49,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- DICTIONNAIRE VILLE -> AÉROPORT (IATA) ---
+# -----------------------------------------------
+# --- CONFIGURATIONS API & CLÉS ---
+# -----------------------------------------------
+
 city_to_iata = {
     "casablanca": "CMN", "rabat": "RBA", "marrakech": "RAK", "fès": "FEZ",
     "tanger": "TNG", "agadir": "AGA", "paris": "CDG", "marseille": "MRS",
@@ -42,17 +62,17 @@ city_to_iata = {
     "londres": "LHR", "rome": "FCO", "istanbul": "IST", "tokyo": "HND"
 }
 
-# --- TES CLÉS API ---
+# TES CLÉS API
 OPENWEATHER_API_KEY = "812f1cb7e3f8342b21a0e38db806d1fa"
 UNSPLASH_API_KEY = "I7uY6A9E1AfsdJuA7kGaYVY3eAYUrHKj7C_fM_iN8Mk"
-GEMINI_API_KEY = "AIzaSyAUfFTLOiiQBOQN0FM20uocTiH34kCJmFI" 
+GEMINI_API_KEY = "AIzaSyCYzNgeKRUGcdEkvyoHe95WTdci92vIzNk" 
 EXCHANGERATE_API_KEY = "6b14aa2301436f4b3ce394e9"
 AVIATIONSTACK_API_KEY = "8097cdde55ac893dba7b47f94a9119c7"
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash') 
 
-# --- FONCTION DATABASE ---
+# --- FONCTION DEPENDENCY DATABASE ---
 def get_db():
     db = SessionLocal()
     try:
@@ -91,73 +111,72 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 
 @app.get("/")
 def read_root():
-    return {"message": "API TravelPulse en ligne !"}
+    return {
+        "message": "API TravelPulse en ligne !", 
+        "env": "Azure Ready",
+        "cors_allowed": origins
+    }
 
-# --- 1. LISTE DES PAYS (VERSION PURE / DÉBOGAGE) ---
+# --- 1. LISTE DES PAYS (VERSION CORRIGÉE : LISTE FIXE) ---
+# Plus d'appel à restcountries.com qui plante
 @app.get("/api/countries")
 def get_all_countries():
-    print("--- Appel API: Récupération des pays... ---")
-    try:
-        url = "https://restcountries.com/v3.1/all?fields=name,currencies,cca2"
-        response = requests.get(url)
-        
-        if response.status_code != 200:
-            print(f"ERREUR API PAYS: Status {response.status_code}")
-            raise HTTPException(status_code=502, detail="Erreur API externe REST Countries")
+    print("--- Appel API: Récupération des pays (Mode Statique) ---")
+    
+    countries_list = [
+        {"name": "Morocco", "currency": "MAD", "code": "MA"},
+        {"name": "France", "currency": "EUR", "code": "FR"},
+        {"name": "United States", "currency": "USD", "code": "US"},
+        {"name": "Spain", "currency": "EUR", "code": "ES"},
+        {"name": "Italy", "currency": "EUR", "code": "IT"},
+        {"name": "United Kingdom", "currency": "GBP", "code": "GB"},
+        {"name": "Germany", "currency": "EUR", "code": "DE"},
+        {"name": "Japan", "currency": "JPY", "code": "JP"},
+        {"name": "Canada", "currency": "CAD", "code": "CA"},
+        {"name": "United Arab Emirates", "currency": "AED", "code": "AE"},
+        {"name": "Saudi Arabia", "currency": "SAR", "code": "SA"},
+        {"name": "Turkey", "currency": "TRY", "code": "TR"},
+        {"name": "China", "currency": "CNY", "code": "CN"},
+        {"name": "Brazil", "currency": "BRL", "code": "BR"},
+        {"name": "Portugal", "currency": "EUR", "code": "PT"}
+    ]
+    
+    countries_list.sort(key=lambda x: x["name"])
+    return countries_list
 
-        data = response.json()
-        countries_list = []
-        
-        for item in data:
-            name = item.get("name", {}).get("common")
-            currencies = item.get("currencies", {})
-            currency_code = list(currencies.keys())[0] if currencies else "USD"
-            
-            countries_list.append({
-                "name": name,
-                "currency": currency_code,
-                "code": item.get("cca2")
-            })
-        
-        countries_list.sort(key=lambda x: x["name"])
-        print(f"--- Succès Pays: {len(countries_list)} pays trouvés ---")
-        return countries_list
-        
-    except Exception as e:
-        print(f"ERREUR CRITIQUE PAYS: {e}")
-        # PAS DE FALLBACK MANUEL ICI : On veut voir l'erreur si ça plante
-        raise HTTPException(status_code=500, detail=str(e))
-
-# --- 2. LISTE DES VILLES (VERSION PURE / DÉBOGAGE) ---
+# --- 2. LISTE DES VILLES (AVEC TIMEOUT ET FALLBACK) ---
 @app.get("/api/cities/{country_name}")
 def get_cities_by_country(country_name: str):
-    print(f"--- Appel API: Villes pour {country_name}... ---")
-    
-    # Formatage du nom pour l'API (Title Case est important)
     formatted_name = country_name.replace("-", " ").title()
-    if formatted_name.lower() in ["usa", "united states of america"]:
+    if formatted_name.lower() in ["usa", "united states of america", "united states"]:
         formatted_name = "United States"
-    if formatted_name.lower() == "uk":
+    if formatted_name.lower() in ["uk", "united kingdom"]:
         formatted_name = "United Kingdom"
 
     try:
         url = "https://countriesnow.space/api/v0.1/countries/cities"
         payload = {"country": formatted_name}
         
-        response = requests.post(url, json=payload)
+        # Ajout d'un timeout de 3 secondes pour ne pas bloquer
+        response = requests.post(url, json=payload, timeout=3)
         data = response.json()
         
         if response.status_code != 200 or data.get("error"):
-            print(f"ERREUR API VILLES pour {formatted_name}: {data.get('msg')}")
-            # On renvoie une liste vide au lieu de planter, mais on log l'erreur
-            return {"cities": []}
+            # Fallback manuel immédiat
+            return get_fallback_cities(formatted_name)
             
-        print(f"--- Succès Villes: {len(data['data'])} villes trouvées pour {formatted_name} ---")
         return {"cities": data["data"]}
             
     except Exception as e:
-        print(f"ERREUR CRITIQUE VILLES: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"ERREUR VILLES ({e}), utilisation du fallback.")
+        return get_fallback_cities(formatted_name)
+
+def get_fallback_cities(country_name):
+    if country_name == "Morocco": return {"cities": ["Casablanca", "Rabat", "Marrakech", "Fes", "Tangier", "Agadir", "Chefchaouen", "Essaouira"]}
+    if country_name == "France": return {"cities": ["Paris", "Marseille", "Lyon", "Nice", "Bordeaux", "Toulouse", "Strasbourg"]}
+    if country_name == "Spain": return {"cities": ["Madrid", "Barcelona", "Seville", "Valencia", "Granada"]}
+    if country_name == "United States": return {"cities": ["New York", "Los Angeles", "Chicago", "Miami", "San Francisco", "Las Vegas"]}
+    return {"cities": []}
 
 # --- 3. MÉTÉO ---
 @app.get("/api/weather/{city_name}")
@@ -171,16 +190,19 @@ def get_weather(city_name: str, date: Optional[str] = None):
             "description": f"{desc} le {date}",
         }
     else:
-        url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={OPENWEATHER_API_KEY}&units=metric&lang=fr"
-        response = requests.get(url)
-        if response.status_code != 200:
-            return {"error": "Ville non trouvée"}
-        data = response.json()
-        return {
-            "ville": data["name"], "temperature": round(data["main"]["temp"]),
-            "description": data["weather"][0]["description"], "icon": data["weather"][0]["icon"],
-            "humidite": data["main"]["humidity"]
-        }
+        try:
+            url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={OPENWEATHER_API_KEY}&units=metric&lang=fr"
+            response = requests.get(url, timeout=3)
+            if response.status_code != 200:
+                return {"error": "Ville non trouvée"}
+            data = response.json()
+            return {
+                "ville": data["name"], "temperature": round(data["main"]["temp"]),
+                "description": data["weather"][0]["description"], "icon": data["weather"][0]["icon"],
+                "humidite": data["main"]["humidity"]
+            }
+        except:
+             return {"ville": city_name, "temperature": "--", "description": "Indisponible", "icon": "01d"}
 
 # --- 4. PRÉVISIONS ---
 @app.get("/api/weather/forecast/{city_name}")
@@ -197,22 +219,25 @@ def get_weather_forecast(city_name: str, start_date: Optional[str] = None):
 # --- 5. PHOTOS ---
 @app.get("/api/photos/{city_name}")
 def get_city_photos(city_name: str):
-    url = "https://api.unsplash.com/search/photos"
-    params = {"query": f"{city_name} city landmark", "per_page": 4, "orientation": "landscape"}
-    headers = {"Authorization": f"Client-ID {UNSPLASH_API_KEY}"}
-    response = requests.get(url, params=params, headers=headers)
-    if response.status_code != 200:
-        return {"error": "Erreur photos", "details": response.json()}
-    data = response.json()
-    photos = []
-    for item in data.get("results", []):
-        photos.append({
-            "id": item.get("id"),
-            "url_small": item.get("urls", {}).get("small"),
-            "alt": item.get("alt_description"),
-            "photographer": item.get("user", {}).get("name")
-        })
-    return {"photos": photos}
+    try:
+        url = "https://api.unsplash.com/search/photos"
+        params = {"query": f"{city_name} city landmark", "per_page": 4, "orientation": "landscape"}
+        headers = {"Authorization": f"Client-ID {UNSPLASH_API_KEY}"}
+        response = requests.get(url, params=params, headers=headers, timeout=4)
+        if response.status_code != 200:
+            return {"error": "Erreur photos", "details": response.json()}
+        data = response.json()
+        photos = []
+        for item in data.get("results", []):
+            photos.append({
+                "id": item.get("id"),
+                "url_small": item.get("urls", {}).get("small"),
+                "alt": item.get("alt_description"),
+                "photographer": item.get("user", {}).get("name")
+            })
+        return {"photos": photos}
+    except:
+        return {"photos": []}
 
 # --- 6. VISA ---
 @app.get("/api/visa/{country_name}")
@@ -231,7 +256,7 @@ def get_currency_rate(base: str, target: str):
     
     url = f"https://v6.exchangerate-api.com/v6/{EXCHANGERATE_API_KEY}/pair/{base}/{target}"
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=4)
         data = response.json()
         if response.status_code == 200 and data.get("result") == "success":
             return {"base": base, "target": target, "rate": data.get("conversion_rate")}
@@ -255,7 +280,7 @@ def get_flights(destination: str, departure_date: Optional[str] = None):
     }
     
     try:
-        res = requests.get("http://api.aviationstack.com/v1/flights", params=params)
+        res = requests.get("http://api.aviationstack.com/v1/flights", params=params, timeout=5)
         data = res.json()
         
         if data.get("data"):
@@ -361,3 +386,7 @@ def change_password(passwords: schemas.UserChangePassword, db: Session = Depends
     current_user.hashed_password = security.get_password_hash(passwords.new_password)
     db.commit()
     return {"message": "Mot de passe mis à jour"}
+
+if __name__ == "__main__":
+    # En production Azure, Gunicorn est utilisé à la place.
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
